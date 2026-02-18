@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#
+# Commit Message Hook
+# Validates commit messages follow conventional commits format
+#
+# Format: <type>[optional scope]: <description>
+#
+# Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+#
+
+set -euo pipefail
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+# Conventional commit pattern
+# type(scope)?: description
+PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?: .{1,}"
+
+# Allow merge commits
+if echo "$COMMIT_MSG" | grep -qE "^Merge "; then
+    exit 0
+fi
+
+# Allow revert commits
+if echo "$COMMIT_MSG" | grep -qE "^Revert "; then
+    exit 0
+fi
+
+# Check format
+if ! echo "$COMMIT_MSG" | head -1 | grep -qE "$PATTERN"; then
+    echo -e "${RED}[commit-msg]${NC} Invalid commit message format"
+    echo ""
+    echo "Expected format: <type>[optional scope]: <description>"
+    echo ""
+    echo "Types:"
+    echo "  feat     A new feature"
+    echo "  fix      A bug fix"
+    echo "  docs     Documentation only changes"
+    echo "  style    Changes that don't affect meaning (formatting, etc)"
+    echo "  refactor A code change that neither fixes a bug nor adds a feature"
+    echo "  perf     A code change that improves performance"
+    echo "  test     Adding missing tests or correcting existing tests"
+    echo "  build    Changes to build system or external dependencies"
+    echo "  ci       Changes to CI configuration"
+    echo "  chore    Other changes that don't modify src or test files"
+    echo "  revert   Reverts a previous commit"
+    echo ""
+    echo "Examples:"
+    echo "  feat: add user authentication"
+    echo "  fix(auth): correct password validation"
+    echo "  docs: update README with examples"
+    echo ""
+    echo -e "Your message: ${YELLOW}$COMMIT_MSG${NC}"
+    exit 1
+fi
+
+# Check description length (first line)
+FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
+if [[ ${#FIRST_LINE} -gt 72 ]]; then
+    echo -e "${YELLOW}[commit-msg]${NC} First line is ${#FIRST_LINE} characters (recommended: 72 max)"
+fi
+
+# Check for imperative mood (common patterns to avoid)
+DESCRIPTION=$(echo "$FIRST_LINE" | sed 's/^[^:]*: //')
+if echo "$DESCRIPTION" | grep -qE "^(Added|Fixed|Changed|Updated|Removed|Deleted) "; then
+    echo -e "${YELLOW}[commit-msg]${NC} Use imperative mood in description"
+    echo "  Instead of: 'Added feature' use 'add feature'"
+    echo "  Instead of: 'Fixed bug' use 'fix bug'"
+fi
+
+echo -e "${GREEN}[commit-msg]${NC} Commit message is valid"
+exit 0

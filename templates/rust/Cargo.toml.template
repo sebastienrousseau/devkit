@@ -1,0 +1,16 @@
+[package]
+name = "{{PROJECT_NAME}}"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sebastien Rousseau <sebastian.rousseau@gmail.com>"]
+description = "{{PROJECT_DESCRIPTION}}"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sebastienrousseau/{{PROJECT_NAME}}"
+documentation = "https://docs.rs/{{PROJECT_NAME}}"
+readme = "README.md"
+keywords = []
+categories = []
+
+[dependencies]
+
+[dev-dependencies]

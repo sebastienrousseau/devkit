@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook for ecosystem projects
+# Runs appropriate checks based on file types being committed
+#
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+log_info() { echo -e "${GREEN}[pre-commit]${NC} $*"; }
+log_warn() { echo -e "${YELLOW}[pre-commit]${NC} $*"; }
+log_error() { echo -e "${RED}[pre-commit]${NC} $*"; }
+
+# Get list of staged files
+get_staged_files() {
+    git diff --cached --name-only --diff-filter=ACMR
+}
+
+# Check for Rust files
+check_rust() {
+    local rust_files
+    rust_files=$(get_staged_files | grep -E '\.rs$' || true)
+
+    if [[ -z "$rust_files" ]]; then
+        return 0
+    fi
+
+    log_info "Checking Rust files..."
+
+    # Check formatting
+    if command -v cargo &>/dev/null; then
+        if ! cargo fmt -- --check &>/dev/null; then
+            log_error "Rust formatting check failed. Run 'cargo fmt' to fix."
+            return 1
+        fi
+
+        # Run clippy on staged files only (if we're in a cargo project)
+        if [[ -f "Cargo.toml" ]]; then
+            if ! cargo clippy --all-targets -- -D warnings &>/dev/null; then
+                log_warn "Clippy warnings found. Consider fixing before commit."
+            fi
+        fi
+    fi
+
+    log_info "Rust checks passed"
+}
+
+# Check for Python files
+check_python() {
+    local python_files
+    python_files=$(get_staged_files | grep -E '\.py$' || true)
+
+    if [[ -z "$python_files" ]]; then
+        return 0
+    fi
+
+    log_info "Checking Python files..."
+
+    # Run ruff if available
+    if command -v ruff &>/dev/null; then
+        if ! echo "$python_files" | xargs ruff check &>/dev/null; then
+            log_error "Ruff check failed. Run 'ruff check --fix' to fix."
+            return 1
+        fi
+
+        if ! echo "$python_files" | xargs ruff format --check &>/dev/null; then
+            log_error "Ruff format check failed. Run 'ruff format' to fix."
+            return 1
+        fi
+    fi
+
+    log_info "Python checks passed"
+}
+
+# Check for JavaScript/TypeScript files
+check_javascript() {
+    local js_files
+    js_files=$(get_staged_files | grep -E '\.(js|ts|jsx|tsx)$' || true)
+
+    if [[ -z "$js_files" ]]; then
+        return 0
+    fi
+
+    log_info "Checking JavaScript/TypeScript files..."
+
+    # Run prettier if available
+    if command -v prettier &>/dev/null; then
+        if ! echo "$js_files" | xargs prettier --check &>/dev/null; then
+            log_error "Prettier check failed. Run 'prettier --write' to fix."
+            return 1
+        fi
+    fi
+
+    # Run eslint if available
+    if command -v eslint &>/dev/null && [[ -f ".eslintrc.js" || -f "eslint.config.js" ]]; then
+        if ! echo "$js_files" | xargs eslint &>/dev/null; then
+            log_warn "ESLint warnings found."
+        fi
+    fi
+
+    log_info "JavaScript checks passed"
+}
+
+# Check for shell scripts
+check_shell() {
+    local shell_files
+    shell_files=$(get_staged_files | grep -E '\.sh$' || true)
+
+    if [[ -z "$shell_files" ]]; then
+        return 0
+    fi
+
+    log_info "Checking shell scripts..."
+
+    # Run shellcheck if available
+    if command -v shellcheck &>/dev/null; then
+        local failed=false
+        for file in $shell_files; do
+            if ! shellcheck "$file" &>/dev/null; then
+                log_warn "ShellCheck warnings in: $file"
+                failed=true
+            fi
+        done
+
+        if [[ "$failed" == "true" ]]; then
+            log_warn "Consider fixing ShellCheck warnings."
+        fi
+    fi
+
+    log_info "Shell checks passed"
+}
+
+# Check for secrets
+check_secrets() {
+    local files
+    files=$(get_staged_files)
+
+    if [[ -z "$files" ]]; then
+        return 0
+    fi
+
+    log_info "Checking for secrets..."
+
+    local patterns=(
+        'password\s*='
+        'api_key\s*='
+        'secret\s*='
+        'AWS_ACCESS_KEY'
+        'PRIVATE_KEY'
+    )
+
+    for file in $files; do
+        if [[ -f "$file" ]]; then
+            for pattern in "${patterns[@]}"; do
+                if grep -iE "$pattern" "$file" &>/dev/null; then
+                    log_error "Possible secret found in: $file"
+                    log_error "Pattern matched: $pattern"
+                    return 1
+                fi
+            done
+        fi
+    done
+
+    log_info "No secrets detected"
+}
+
+# Main
+main() {
+    local exit_code=0
+
+    check_secrets || exit_code=1
+    check_rust || exit_code=1
+    check_python || exit_code=1
+    check_javascript || exit_code=1
+    check_shell || true  # Shell warnings don't fail
+
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Pre-commit checks failed"
+        exit 1
+    fi
+
+    log_info "All pre-commit checks passed"
+}
+
+main "$@"
